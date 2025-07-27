@@ -1,1 +1,25 @@
-6
+name: Close Duplicate Issues Manually
+on:
+  workflow_dispatch:  # 手动触发
+
+permissions:
+  issues: write  # 确保对Issue的写入权限[citation:1][citation:10]
+
+jobs:
+  process-duplicates:
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'  # 指定Python版本
+
+      - name: Install dependencies
+        run: pip install requests  # 安装脚本依赖
+
+      - name: Run closure script
+        env:
+          GITHUB_TOKEN: ${{ secrets.SHEEP }}  # 使用自定义Token[citation:1][citation:8]
+        run: python close_duplicates.py  # 执行根目录下的脚本[citation:6]
+
