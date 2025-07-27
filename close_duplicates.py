@@ -5,8 +5,8 @@ import json
 
 # 配置参数
 TOKEN = os.environ['GITHUB_TOKEN']  # 使用环境变量中的 token
-REPO_OWNER = "Meloong-Git"
-REPO_NAME = "PCL"
+REPO_OWNER = "Deep-Dark-Forest"
+REPO_NAME = "test2"
 GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
 DUPLICATE_LABEL = "重复"
 
