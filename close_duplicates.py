@@ -4,9 +4,9 @@ import time
 import json
 
 # 配置参数
-TOKEN = os.environ['GITHUB_TOKEN']  # 使用标准环境变量名
-REPO_OWNER = "Deep-Dark-Forest"
-REPO_NAME = "test2"
+TOKEN = os.environ['GITHUB_TOKEN']  # 使用环境变量中的 token
+REPO_OWNER = "Meloong-Git"
+REPO_NAME = "PCL"
 GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
 DUPLICATE_LABEL = "重复"
 
@@ -45,24 +45,34 @@ def has_duplicate_label(issue):
     labels = [label["name"] for label in issue["labels"]["nodes"]]
     return DUPLICATE_LABEL in labels
 
-def mark_as_duplicate(issue_id):
-    mutation = """
-    mutation ($input: UpdateIssueInput!) {
-      updateIssue(input: $input) {
-        issue {
-          id
-        }
-      }
+def mark_as_duplicate(issue_id, issue_number):
+    """使用 REST API 标记 issue 为重复"""
+    rest_url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/issues/{issue_number}"
+    headers = {
+        "Authorization": f"Bearer {TOKEN}",
+        "Accept": "application/vnd.github.v3+json",
+        "X-GitHub-Api-Version": "2022-11-28"
     }
-    """
-    variables = {"input": {"id": issue_id, "stateReason": "DUPLICATED"}}
-    return make_request(mutation, variables)
+    data = {
+        "state": "closed",
+        "state_reason": "duplicate"
+    }
+    
+    print(f"使用 REST API 更新 issue #{issue_number}...")
+    response = requests.patch(rest_url, json=data, headers=headers)
+    
+    if response.status_code == 200:
+        print(f"成功标记 issue #{issue_number} 为重复")
+        return True
+    else:
+        print(f"更新失败: {response.status_code} - {response.text}")
+        return False
 
 def make_request(query, variables):
     headers = {
         "Authorization": f"Bearer {TOKEN}",
         "Content-Type": "application/json",
-        "Accept": "application/vnd.github.v4.idl"  # 明确API版本
+        "Accept": "application/vnd.github.v4.idl"
     }
     payload = {"query": query, "variables": variables}
     
@@ -73,10 +83,9 @@ def make_request(query, variables):
         
         # 调试输出
         print("GraphQL 响应状态:", response.status_code)
-        print("GraphQL 响应内容:", json.dumps(result, indent=2))
         
         if "errors" in result:
-            raise Exception(f"GraphQL 错误: {result['errors']}")
+            raise Exception(f"GraphQL 错误: {json.dumps(result['errors'], indent=2)}")
         if "data" not in result:
             raise Exception("响应中缺少 'data' 字段")
             
@@ -90,6 +99,7 @@ def main():
     cursor = None
     has_next_page = True
     processed_count = 0
+    skipped_count = 0
     
     print(f"开始处理仓库: {REPO_OWNER}/{REPO_NAME}")
     print(f"目标标签: '{DUPLICATE_LABEL}'")
@@ -106,18 +116,25 @@ def main():
         print(f"本页获取 {len(issues)} 个 issue")
         
         for issue in issues:
-            if issue.get("stateReason") == "NOT_PLANNED" and has_duplicate_label(issue):
+            # 跳过非 NOT_PLANNED 状态的 issue
+            if issue.get("stateReason") != "NOT_PLANNED":
+                skipped_count += 1
+                continue
+                
+            if has_duplicate_label(issue):
                 print(f"处理 #{issue['number']}: {issue['title']}")
-                mark_as_duplicate(issue["id"])
-                processed_count += 1
-                print(f"已标记为重复关闭 (总计: {processed_count})")
-                time.sleep(1)
+                success = mark_as_duplicate(issue["id"], issue["number"])
+                if success:
+                    processed_count += 1
+                time.sleep(1)  # 避免速率限制
+            else:
+                skipped_count += 1
         
         if has_next_page:
             print("获取下一页...")
-            time.sleep(2)
+            time.sleep(2)  # 分页请求间暂停
     
-    print(f"处理完成! 共标记 {processed_count} 个 issue")
+    print(f"处理完成! 共标记 {processed_count} 个 issue, 跳过 {skipped_count} 个")
 
 if __name__ == "__main__":
     main()
