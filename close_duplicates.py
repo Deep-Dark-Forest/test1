@@ -3,7 +3,7 @@ import requests
 import time
 
 # 配置参数
-TOKEN = os.environ['SHEEP']  # 从环境变量获取 token
+TOKEN = os.environ['GITHUB_TOKEN']  # 从环境变量获取 token
 REPO_OWNER = "Deep-Dark-Forest"
 REPO_NAME = "test2"
 GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
