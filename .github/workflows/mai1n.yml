@@ -8,6 +8,7 @@ on:
 jobs:
   run-wine-and-capture:
     runs-on: macos-latest  # 使用最新的 macOS 运行器，通常包括 M1 (ARM64)
+    timeout-minutes: 30    # 设置整个 job 的超时时间为 30 分钟，防止无限等待
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -17,8 +18,8 @@ jobs:
           # 安装 Homebrew
           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh )"
           
-          # 安装 Wine
-          brew install --cask wine-stable
+          # 安装 Wine (从 Homebrew 安装最新版本)
+          brew install --cask wine-stable  # 或尝试 wine-devel
           
           # 安装 XQuartz (Wine 可能需要 X11 显示服务器)
           brew install --cask xquartz
@@ -26,21 +27,31 @@ jobs:
           # 安装 winetricks (用于安装 Wine 所需的额外依赖，如 .NET Framework)
           brew install winetricks
           
-          # 安装截图工具 (screencapture 是 macOS 自带)
-          # 安装 imagemagick 用于可能的图像处理 (可选)
+          # 安装截图工具
           brew install imagemagick
 
-      - name: Configure Wine environment for WPF .NET
+      - name: Configure Wine environment for WPF .NET (Optimized)
         run: |
-          # 初始化一个新的 64 位 Wine 前缀（环境）
+          # 设置 Wine 架构和前缀
           export WINEARCH=win64
-          winecfg -v win10  # 尝试将默认 Windows 版本设置为 Windows 10，这对新版的 .NET Framework 兼容性可能更好
+          export WINEPREFIX=$HOME/.wine
+
+          # 初始化 Wine 配置（非交互式，设置 Windows 版本为 win10）
+          wineboot --init
+          # 设置 Windows 版本为 Windows 10 可能对兼容性有帮助
+          winecfg -v win10 &
+
+          # 使用 winetricks 安装核心依赖，尝试避免或自动处理任何弹出窗口
+          # 安装 .NET Framework 4.5 和 DirectX 9 (d3dx9)
+          # 添加超时设置，防止无限等待
+          timeout 1500 winetricks --force -q dotnet45  # 1500 秒 = 25 分钟
           
-          # 使用 winetricks 安装 .NET Framework 4.5 (WPF 应用通常需要)
-          # 注意：安装过程可能需要较长时间，且可能需要交互式操作，但在 CI 环境中会尝试自动完成
-          winetricks --force -q dotnet45
+          # 检查上一条命令的退出状态
+          if [ $? -eq 124 ]; then
+              echo "Winetricks dotnet45 installation timed out, but proceeding anyway."
+          fi
           
-          # 安装 DirectX 9 依赖（WPF 使用 DirectX 进行渲染）[2](@ref)
+          # 安装 DirectX 9 依赖（通常较快）
           winetricks -q d3dx9
 
       - name: Download the WPF .NET EXE
