@@ -1,56 +1,74 @@
-name: Run Windows EXE on macOS ARM and Upload Screenshot
+name: Run WPF .NET App with Wine on macOS ARM
 
 on:
-  workflow_dispatch:  # 允许手动触发工作流
+  workflow_dispatch:
   push:
-    branches: [ main ]  # 或在推送至 main 分支时触发
+    branches: [ main ]
 
 jobs:
   run-wine-and-capture:
-    runs-on: macos-latest  # 使用最新的 macOS 运行器，目前 GitHub 提供的 macOS 运行器包括基于 M1 的 ARM 架构
+    runs-on: macos-latest  # 使用最新的 macOS 运行器，通常包括 M1 (ARM64)
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
-          # 安装 Homebrew（如果尚未安装）
+          # 安装 Homebrew
           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh )"
           
-          # 通过 Homebrew 安装 Wine（Wine 在 ARM macOS 上的安装可能通过 Rosetta 2 或特定版本实现）
-          # 注意：目前 Wine 对 macOS ARM 的原生支持有限，安装可能需要特定操作
+          # 安装 Wine
           brew install --cask wine-stable
           
-          # 安装 XQuartz（提供 X11 窗口系统，Wine 可能需要）
+          # 安装 XQuartz (Wine 可能需要 X11 显示服务器)
           brew install --cask xquartz
           
-          # 安装截图工具（screencapture 是 macOS 自带，但确保其他依赖）
-          # 安装 imagemagick 用于可能的图像处理（可选）
+          # 安装 winetricks (用于安装 Wine 所需的额外依赖，如 .NET Framework)
+          brew install winetricks
+          
+          # 安装截图工具 (screencapture 是 macOS 自带)
+          # 安装 imagemagick 用于可能的图像处理 (可选)
           brew install imagemagick
 
-      - name: Download the Windows EXE
+      - name: Configure Wine environment for WPF .NET
         run: |
-          # 下载指定的 Windows 程序
+          # 初始化一个新的 64 位 Wine 前缀（环境）
+          export WINEARCH=win64
+          winecfg -v win10  # 尝试将默认 Windows 版本设置为 Windows 10，这对新版的 .NET Framework 兼容性可能更好
+          
+          # 使用 winetricks 安装 .NET Framework 4.5 (WPF 应用通常需要)
+          # 注意：安装过程可能需要较长时间，且可能需要交互式操作，但在 CI 环境中会尝试自动完成
+          winetricks --force -q dotnet45
+          
+          # 安装 DirectX 9 依赖（WPF 使用 DirectX 进行渲染）[2](@ref)
+          winetricks -q d3dx9
+
+      - name: Download the WPF .NET EXE
+        run: |
+          # 下载指定的 Windows WPF 程序
           curl -L -o PCL2_CE_Release_ARM64.exe https://github.com/PCL-Community/PCL2-CE/releases/download/2.12.3/PCL2_CE_Release_ARM64.exe 
 
-      - name: Run the EXE with Wine and capture screenshot
+      - name: Run the WPF EXE with Wine and capture screenshot
         run: |
           # 启动 XQuartz
-          open -a XQuartz
+          open -a XQuartz &
+          sleep 5  # 等待 XQuartz 启动
           
-          # 设置 DISPLAY 环境变量（通常为 :0）
+          # 设置 DISPLAY 环境变量
           export DISPLAY=:0
           
-          # 使用 Wine 运行程序，并等待一段时间让窗口出现（这里假设程序会启动图形界面）
-          # 由于无法直接交互，我们尝试在后台启动程序并截图
+          # 设置 Wine 的 Windows 版本为 Windows 10 (尝试提升兼容性)
+          winecfg -v win10
+          
+          # 使用 Wine 运行 WPF 程序，并等待一段时间让窗口出现
+          # 注意：WPF 程序可能需要更长的启动时间
           wine PCL2_CE_Release_ARM64.exe &
           WINE_PID=$!
           
-          # 等待几秒让程序启动
-          sleep 10
+          # 等待足够时间让 WPF 程序启动和渲染 (WPF 应用启动可能较慢)
+          sleep 20
           
-          # 使用 macOS 自带的 screencapture 工具截图
-          # 截取整个屏幕（注意：在 CI 环境中，可能需要虚拟显示或图形界面支持）
+          # 使用 screencapture 截图
           screencapture screenshot.png
           
           # 如果程序仍在运行，则终止它
@@ -59,5 +77,5 @@ jobs:
       - name: Upload screenshot to artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: wine-screenshot
+          name: wpf-wine-screenshot
           path: screenshot.png
