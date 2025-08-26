@@ -1,0 +1,63 @@
+name: Run Windows EXE on macOS ARM and Upload Screenshot
+
+on:
+  workflow_dispatch:  # 允许手动触发工作流
+  push:
+    branches: [ main ]  # 或在推送至 main 分支时触发
+
+jobs:
+  run-wine-and-capture:
+    runs-on: macos-latest  # 使用最新的 macOS 运行器，目前 GitHub 提供的 macOS 运行器包括基于 M1 的 ARM 架构
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          # 安装 Homebrew（如果尚未安装）
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh )"
+          
+          # 通过 Homebrew 安装 Wine（Wine 在 ARM macOS 上的安装可能通过 Rosetta 2 或特定版本实现）
+          # 注意：目前 Wine 对 macOS ARM 的原生支持有限，安装可能需要特定操作
+          brew install --cask wine-stable
+          
+          # 安装 XQuartz（提供 X11 窗口系统，Wine 可能需要）
+          brew install --cask xquartz
+          
+          # 安装截图工具（screencapture 是 macOS 自带，但确保其他依赖）
+          # 安装 imagemagick 用于可能的图像处理（可选）
+          brew install imagemagick
+
+      - name: Download the Windows EXE
+        run: |
+          # 下载指定的 Windows 程序
+          curl -L -o PCL2_CE_Release_ARM64.exe https://github.com/PCL-Community/PCL2-CE/releases/download/2.12.3/PCL2_CE_Release_ARM64.exe 
+
+      - name: Run the EXE with Wine and capture screenshot
+        run: |
+          # 启动 XQuartz
+          open -a XQuartz
+          
+          # 设置 DISPLAY 环境变量（通常为 :0）
+          export DISPLAY=:0
+          
+          # 使用 Wine 运行程序，并等待一段时间让窗口出现（这里假设程序会启动图形界面）
+          # 由于无法直接交互，我们尝试在后台启动程序并截图
+          wine PCL2_CE_Release_ARM64.exe &
+          WINE_PID=$!
+          
+          # 等待几秒让程序启动
+          sleep 10
+          
+          # 使用 macOS 自带的 screencapture 工具截图
+          # 截取整个屏幕（注意：在 CI 环境中，可能需要虚拟显示或图形界面支持）
+          screencapture screenshot.png
+          
+          # 如果程序仍在运行，则终止它
+          kill $WINE_PID || true
+
+      - name: Upload screenshot to artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wine-screenshot
+          path: screenshot.png
